@@ -5,6 +5,8 @@ import com.docmind.ingest.multimodal.MultimodalService;
 import com.docmind.rag.RagModels;
 import com.docmind.rag.RagService;
 import com.docmind.security.CurrentUser;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -21,6 +23,8 @@ import java.util.Map;
 @RequestMapping("/api/chat")
 @RequiredArgsConstructor
 @Validated
+@Tag(name = "智能问答", description = "基于知识库的 RAG 问答（同步 / SSE 流式）、多模态提问、检索诊断与会话管理。")
+@SecurityRequirement(name = "bearer-jwt")
 public class ChatController {
 
     private final ChatService chatService;

@@ -26,6 +26,9 @@
         <poi.version>5.4.1</poi.version>
         <minio.version>8.6.0</minio.version>
         <jjwt.version>0.13.0</jjwt.version>
+        <!-- springdoc 3.x 是面向 Spring Boot 4 的世代（2.x 只到 Boot 3）。
+             3.1.1 的父 POM 继承 spring-boot-starter-parent:4.1.0，与本项目 4.1.1 同代。 -->
+        <springdoc.version>3.1.1</springdoc.version>
     </properties>
 
     <dependencyManagement>
@@ -92,6 +95,14 @@
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
+        </dependency>
+
+        <!-- OpenAPI 3.1 文档 + Swagger UI。仅 dev / dev-redis 默认暴露，prod 由配置关闭。
+             注意 springdoc 2.x 依赖 javax 且绑定 Boot 3，在 Boot 4 上会直接启动失败。 -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
         </dependency>
 
         <!-- 可观测 -->

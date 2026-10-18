@@ -7,6 +7,8 @@ import com.docmind.kb.KbModels.KnowledgeBase;
 import com.docmind.ingest.IngestTaskRepository;
 import com.docmind.observe.MetricsService;
 import com.docmind.security.CurrentUser;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +22,8 @@ import java.util.Map;
 @RequestMapping("/api/kb")
 @RequiredArgsConstructor
 @Validated
+@Tag(name = "知识库与文档", description = "知识库增删改查、文档上传 / 分块 / 任务查询 / 失败重试、摄取队列状态。")
+@SecurityRequirement(name = "bearer-jwt")
 public class KbController {
 
     private final KnowledgeBaseRepository knowledgeBases;

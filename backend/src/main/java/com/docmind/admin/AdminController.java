@@ -12,6 +12,8 @@ import com.docmind.kb.KnowledgeBaseRepository;
 import com.docmind.observe.AiUsageRepository;
 import com.docmind.observe.AuditService;
 import com.docmind.security.CurrentUser;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.core.env.Environment;
@@ -24,6 +26,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
+@Tag(name = "运维控制台", description = "概览统计、AI 用量、审计日志与组件拓扑。需 ROLE_ADMIN。")
+@SecurityRequirement(name = "bearer-jwt")
 public class AdminController {
 
     private final JdbcClient jdbc;

@@ -26,10 +26,21 @@ import re
 import sys
 from pathlib import Path
 
-import yaml
-
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_COMPOSE = ROOT / "docker-compose.yml"
+
+try:
+    import yaml
+except ModuleNotFoundError:  # pragma: no cover - 环境依赖缺失
+    # 退出码约定：0=全部通过 1=发现问题 2=脚本自身跑不起来。
+    # 这里必须是 2，否则在 CI 上「缺依赖崩溃」会被误判成「校验器抓到了故障」。
+    sys.stderr.write(
+        "缺少依赖 PyYAML，无法解析 docker-compose.yml。\n"
+        "安装方式：\n"
+        f"  {sys.executable} -m pip install pyyaml\n"
+        "或在 CI 里加一步：pip install pyyaml\n"
+    )
+    raise SystemExit(2)
 
 errors: list[str] = []
 warns: list[str] = []

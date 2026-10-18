@@ -75,6 +75,20 @@ docmind:
     type: pgvector
   search:
     type: pg
+  # 生产不对外暴露 API 文档：接口清单属于内部资产，没必要给匿名访客一份攻击面地图。
+  # 需要排查时临时设为 true 并重启，或改走内网端口。
+  open-api:
+    enabled: ${DOCMIND_OPENAPI_ENABLED:false}
+    public-access: ${DOCMIND_OPENAPI_PUBLIC:false}
+
+# 光让 OpenApiConfig 这个 Bean 不装配还不够：springdoc 的自动配置仍会注册
+# /v3/api-docs 与 /swagger-ui.html。必须把 springdoc 自己的开关也关掉，
+# 否则“文档已关闭”只是心理安慰，端点照样返回 200。
+springdoc:
+  api-docs:
+    enabled: ${DOCMIND_OPENAPI_ENABLED:false}
+  swagger-ui:
+    enabled: ${DOCMIND_OPENAPI_ENABLED:false}
 
 logging:
   level:

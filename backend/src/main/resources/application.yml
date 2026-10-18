@@ -92,6 +92,15 @@ management:
     sampling:
       probability: ${OTEL_SAMPLE_RATE:1.0}
 
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    # 接口多了之后默认顺序是源码顺序，联调时很难找；按字母排更实用。
+    operations-sorter: alpha
+    tags-sorter: alpha
+
 logging:
   pattern:
     console: "%d{HH:mm:ss.SSS} %-5level [%X{traceId:-}] %logger{36} - %msg%n"
@@ -137,3 +146,7 @@ docmind:
   mcp:
     expose-kb-ids: ${DOCMIND_MCP_EXPOSE_KB_IDS:}
     api-key: ${DOCMIND_MCP_API_KEY:}
+  # OpenAPI 文档：dev 开放给前端联调，prod 在 application-prod.yml 里关闭。
+  open-api:
+    enabled: ${DOCMIND_OPENAPI_ENABLED:true}
+    public-access: ${DOCMIND_OPENAPI_PUBLIC:true}

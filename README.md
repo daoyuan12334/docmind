@@ -347,3 +347,37 @@ redis-server.exe --port 6379 &
 
 此时 `curl -H "Authorization: Bearer $TOKEN" localhost:8080/api/admin/system`
 应返回 `"cache":"RedisCacheAdapter","cacheAlive":true`。
+
+## 十五、API 文档（OpenAPI 3.1）
+
+服务启动后直接打开 **http://127.0.0.1:8080/swagger-ui.html**，
+或取机器可读的规格 **http://127.0.0.1:8080/v3/api-docs**（可直接导入 Postman / Apifox）。
+
+当前收录 **23 条路径 / 29 个接口**，分四组：
+
+| 分组 | 接口数 | 说明 |
+| --- | --- | --- |
+| 知识库与文档 | 13 | 建库、上传、分块、任务查询、失败重试、队列状态 |
+| 智能问答 | 8 | 同步问答、SSE 流式、多模态提问、检索诊断、会话管理 |
+| 运维控制台 | 5 | 概览、AI 用量、审计日志、组件拓扑、配额 |
+| 认证与账号 | 3 | 注册、登录、当前登录人 |
+
+联调时点右上角 **Authorize**，把 `/api/auth/login` 返回的 `token` 粘进去即可
+（无需手写 `Bearer ` 前缀）。除登录/注册外，其余接口均需鉴权。
+
+**生产默认关闭**：`application-prod.yml` 里 `docmind.open-api.enabled=false`，
+同时把 `springdoc.api-docs.enabled` / `springdoc.swagger-ui.enabled` 一并关掉
+——只让 `OpenApiConfig` 这个 Bean 不装配是不够的，springdoc 的自动配置仍会注册端点。
+
+## 十六、CI
+
+`.github/workflows/ci.yml` 三个 job：
+
+| job | 内容 |
+| --- | --- |
+| `backend` | `mvn test`（71 个用例）+ `package` + 上传 jar |
+| `frontend` | `npm ci` + `npm run build` + 上传 dist |
+| `compose` | `check_compose.py` 静态校验 + 校验器自检 + `docker compose config` |
+
+需要真中间件的两个 `*IT` 不在 CI 里跑（日常构建不该依赖 Redis/Kafka），
+用 `./tool/verify-middleware.sh` 单独触发。

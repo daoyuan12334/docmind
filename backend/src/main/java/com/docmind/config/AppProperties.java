@@ -19,6 +19,7 @@ public class AppProperties {
     private Bus bus = new Bus();
     private VectorStoreCfg vector = new VectorStoreCfg();
     private Mcp mcp = new Mcp();
+    private OpenApi openApi = new OpenApi();
 
     @Data
     public static class Ai {
@@ -116,5 +117,20 @@ public class AppProperties {
         /** 逗号分隔的知识库 ID 白名单；为空表示不放行任何知识库（默认安全）。 */
         private String exposeKbIds = "";
         private String apiKey = "";
+    }
+
+    @Data
+    public static class OpenApi {
+        /** 是否暴露 OpenAPI 文档与 Swagger UI。prod 建议关闭，或至少把 public 置为 false。 */
+        private boolean enabled = true;
+        /**
+         * true = 匿名可访问 /v3/api-docs 与 /swagger-ui（开发便利）；
+         * false = 仅 ROLE_ADMIN 可访问（企业生产默认）。
+         *
+         * <p>字段名不叫 {@code public}（Java 关键字），也不叫 {@code isPublic}
+         * ——后者会让宽松绑定去找 {@code is-public}，与 YAML 里写的
+         * {@code public-access} 对不上，属于典型的静默失效。
+         */
+        private boolean publicAccess = true;
     }
 }
