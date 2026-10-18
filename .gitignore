@@ -1,0 +1,29 @@
+# ---- 敏感信息 ----
+.env
+*.key
+*.pem
+secrets/
+
+# ---- 构建产物 ----
+backend/target/
+frontend/dist/
+frontend/node_modules/
+**/node_modules/
+
+# ---- 运行期数据 ----
+backend/data/
+data/
+*.log
+package*.log
+run*.log
+build*.log
+
+# ---- IDE / 系统 ----
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# ---- 文档样本（可选）----
+docs/_local/

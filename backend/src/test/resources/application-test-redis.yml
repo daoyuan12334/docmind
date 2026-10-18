@@ -1,0 +1,43 @@
+# 真 Redis 联调用的 profile（application-test.yml 的变体，只是把 Redis 自动配置打开）。
+# 用法：REDIS_HOST=127.0.0.1 mvn test -Dtest=RedisCacheIT -Dspring.profiles.active=test-redis
+spring:
+  datasource:
+    url: jdbc:h2:mem:docmind_it;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  flyway:
+    enabled: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/migration/common/V1__core.sql
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+
+docmind:
+  ai:
+    api-key: test-key-not-real
+    base-url: http://localhost:1/v1
+  storage:
+    type: local
+    local-root: ./target/test-data/storage
+  cache:
+    type: local
+  bus:
+    type: local
+  vector:
+    type: memory
+    file: ./target/test-data/vector-store.json
+
+logging:
+  level:
+    com.docmind: WARN
+    root: WARN

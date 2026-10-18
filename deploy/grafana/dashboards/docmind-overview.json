@@ -1,0 +1,213 @@
+{
+  "uid": "docmind-overview",
+  "title": "DocMind 私有文档智能系统 · 总览",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "tags": ["docmind", "spring-ai", "rag"],
+  "templating": {
+    "list": [
+      {
+        "name": "application",
+        "label": "应用",
+        "type": "constant",
+        "query": "docmind",
+        "current": { "text": "docmind", "value": "docmind" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "服务可用性",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"docmind-backend\"}",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "red" }, { "value": 1, "color": "green" }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "AI 请求总数（6h）",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(docmind_ai_requests_total[6h]))",
+          "legendFormat": "requests"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "Token 消耗（6h）",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(docmind_ai_tokens_total[6h]))",
+          "legendFormat": "tokens"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "摄取队列积压",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "docmind_ingest_queue",
+          "legendFormat": "pending"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "green" }, { "value": 10, "color": "orange" }, { "value": 50, "color": "red" }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "MCP 工具调用（6h）",
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(docmind_mcp_calls_total[6h]))",
+          "legendFormat": "mcp"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "摄取文档数（6h）",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(docmind_ingest_documents_total[6h]))",
+          "legendFormat": "docs"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "HTTP QPS（按状态）",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(http_server_requests_seconds_count{application=\"docmind\"}[1m]))",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "AI 调用耗时 P50 / P95 / P99",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(docmind_ai_duration_seconds_bucket[5m])))", "legendFormat": "P50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(docmind_ai_duration_seconds_bucket[5m])))", "legendFormat": "P95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(docmind_ai_duration_seconds_bucket[5m])))", "legendFormat": "P99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "检索耗时 P95（向量+关键词混合）",
+      "gridPos": { "x": 0, "y": 12, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(docmind_retrieval_duration_seconds_bucket[5m])))", "legendFormat": "retrieval P95" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "文档摄取耗时 P95",
+      "gridPos": { "x": 8, "y": 12, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(docmind_ingest_duration_seconds_bucket[5m])))", "legendFormat": "ingest P95" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "检索命中数",
+      "gridPos": { "x": 16, "y": 12, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        { "refId": "A", "expr": "docmind_retrieval_hits", "legendFormat": "hits" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "JVM 堆内存",
+      "gridPos": { "x": 0, "y": 20, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        { "refId": "A", "expr": "jvm_memory_used_bytes{area=\"heap\"}", "legendFormat": "used" },
+        { "refId": "B", "expr": "jvm_memory_committed_bytes{area=\"heap\"}", "legendFormat": "committed" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Tomcat 线程池使用率",
+      "gridPos": { "x": 8, "y": 20, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        { "refId": "A", "expr": "tomcat_threads_busy_threads / tomcat_threads_config_max_threads", "legendFormat": "busy ratio" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "HikariCP 连接数",
+      "gridPos": { "x": 16, "y": 20, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "docmind-prom" },
+      "targets": [
+        { "refId": "A", "expr": "hikaricp_connections_active", "legendFormat": "active" },
+        { "refId": "B", "expr": "hikaricp_connections_idle", "legendFormat": "idle" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    }
+  ]
+}

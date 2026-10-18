@@ -1,0 +1,63 @@
+# 测试 profile：内存 H2 + 本地适配器 + 假密钥，不连任何外部中间件、不花一分钱 token
+spring:
+  datasource:
+    url: jdbc:h2:mem:docmind_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  flyway:
+    enabled: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/migration/common/V1__core.sql
+  data:
+    redis:
+      repositories:
+        enabled: false
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+
+docmind:
+  ai:
+    api-key: test-key-not-real
+    base-url: http://localhost:1/v1
+    chat-model: stub-chat
+    embedding-model: stub-embedding
+    embedding-dimensions: 8
+    vision-model: stub-vision
+    omni-model: stub-omni
+  storage:
+    type: local
+    local-root: ./target/test-data/storage
+  cache:
+    type: local
+  bus:
+    type: local
+  vector:
+    type: memory
+    file: ./target/test-data/vector-store.json
+  ingest:
+    chunk-size: 300
+    chunk-overlap: 60
+    max-attempts: 1
+    worker-concurrency: 1
+  quota:
+    daily-tokens-per-user: 1000000
+    requests-per-minute: 10000
+  mcp:
+    expose-kb-ids: ""
+
+management:
+  health:
+    redis:
+      enabled: false
+
+logging:
+  level:
+    com.docmind: INFO
+    root: WARN

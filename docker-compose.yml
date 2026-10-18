@@ -1,0 +1,325 @@
+# =============================================================================
+# DocMind 私有文档智能系统 —— 生产级一键编排
+#
+#   docker compose --env-file .env up -d --build
+#
+# 包含：PostgreSQL18+pgvector / Redis8 / Kafka4(KRaft) / MinIO / Prometheus / Grafana
+#      / docmind-backend(Spring Boot 4 + Spring AI 2) / docmind-frontend(Nginx)
+#
+# 端口占用（宿主）：80 前端 | 8080 后端 | 5432 PG | 6379 Redis | 9092 Kafka
+#                  9000/9001 MinIO | 9090 Prometheus | 3000 Grafana
+# =============================================================================
+
+name: docmind
+
+x-healthcheck-defaults: &hc
+  interval: 15s
+  timeout: 5s
+  retries: 10
+  start_period: 40s
+
+services:
+  # ---------------------------------------------------------------- 向量数据库
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg18-trixie
+    container_name: docmind-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-docmind}
+      POSTGRES_USER: ${DB_USER:-docmind}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}
+      PGDATA: /var/lib/postgresql/18/docker
+      # 中文全文检索默认使用 simple 词典即可，pg_trgm 在迁移脚本里启用
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - log_min_duration_statement=1000
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${PG_HOST_PORT:-5432}:5432"
+    healthcheck:
+      <<: *hc
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-docmind} -d ${DB_NAME:-docmind}"]
+    networks: [docmind]
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  # ------------------------------------------------------------------ 缓存 / 会话 / 限流 / 会话记忆
+  redis:
+    image: redis:8.4-alpine
+    container_name: docmind-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:?请在 .env 中设置 REDIS_PASSWORD}
+    volumes:
+      - redisdata:/data
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    healthcheck:
+      <<: *hc
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+    networks: [docmind]
+    deploy:
+      resources:
+        limits:
+          memory: 700m
+
+  # ------------------------------------------------------------------ 消息总线（KRaft，无需 Zookeeper）
+  kafka:
+    image: apache/kafka:4.1.1
+    container_name: docmind-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://${KAFKA_ADVERTISED_HOST:-localhost}:9094"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:-docmind-cluster-0001}
+    volumes:
+      - kafka:/var/lib/kafka/data
+    ports:
+      - "${KAFKA_HOST_PORT:-9092}:9092"
+      - "${KAFKA_EXT_PORT:-9094}:9094"
+    healthcheck:
+      <<: *hc
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+    networks: [docmind]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  # ------------------------------------------------------------------ 对象存储
+  minio:
+    image: minio/minio:RELEASE.2026-09-07T00-00-00Z
+    container_name: docmind-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?请在 .env 中设置 MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?请在 .env 中设置 MINIO_SECRET_KEY}
+      MINIO_BROWSER_REDIRECT_URL: http://${MINIO_PUBLIC_HOST:-localhost}:9001
+    volumes:
+      - miniodata:/data
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "mc", "ready", "local"]
+    networks: [docmind]
+    deploy:
+      resources:
+        limits:
+          memory: 700m
+
+  # MinIO 首次启动时自动建桶（不进 compose 依赖关键路径）
+  minio-init:
+    image: minio/mc:RELEASE.2026-08-13T00-00-00Z
+    container_name: docmind-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set local http://minio:9000 "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY"
+        mc mb --ignore-existing local/$$MINIO_BUCKET
+        mc anonymous set none local/$$MINIO_BUCKET
+        echo "bucket ready: $$MINIO_BUCKET"
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-docmind}
+    networks: [docmind]
+    restart: on-failure
+
+  # ------------------------------------------------------------------ 后端
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: docmind/backend:${DOCMIND_VERSION:-1.0.0}
+    container_name: docmind-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # —— 注意：宿主机注入的 SERVER__PORT / SERVER__HOST 会污染 Spring 宽松绑定，
+      #    因此后端一律使用 DOCMIND_ 前缀变量，端口与地址在下面显式写死。
+      DOCMIND_SERVER_PORT: 8080
+      DOCMIND_SERVER_ADDRESS: 0.0.0.0
+      # Actuator 独立端口：只在 docmind 内网可达，compose 不映射到宿主
+      MANAGEMENT_PORT: 9091
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-docmind}
+      DB_USER: ${DB_USER:-docmind}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-docmind}
+      # —— 模型：阿里百炼（OpenAI 兼容）；换 OpenAI/DeepSeek 只需改这两个变量
+      AI_BASE_URL: ${AI_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:?请在 .env 中设置 DASHSCOPE_API_KEY}
+      AI_CHAT_MODEL: ${AI_CHAT_MODEL:-qwen-plus}
+      AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-text-embedding-v4}
+      AI_EMBEDDING_DIM: ${AI_EMBEDDING_DIM:-1024}
+      AI_VISION_MODEL: ${AI_VISION_MODEL:-qwen-vl-max-latest}
+      AI_OMNI_MODEL: ${AI_OMNI_MODEL:-qwen3-omni-flash}
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-720}
+      DOCMIND_MCP_API_KEY: ${MCP_API_KEY:-}
+      DOCMIND_MCP_EXPOSE_KB_IDS: ${DOCMIND_MCP_EXPOSE_KB_IDS:-}
+      JAVA_TOOL_OPTIONS: >-
+        -XX:+UseContainerSupport
+        -XX:MaxRAMPercentage=70.0
+        -XX:+ExitOnOutOfMemoryError
+        -Djava.security.egd=file:/dev/./urandom
+    volumes:
+      - backend-data:/app/data
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      <<: *hc
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9091/actuator/health | grep -q '\"UP\"'"]
+    networks: [docmind]
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ------------------------------------------------------------------ 前端
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-/api}
+    image: docmind/frontend:${DOCMIND_VERSION:-1.0.0}
+    container_name: docmind-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    healthcheck:
+      <<: *hc
+      test: ["CMD-SHELL", "wget -qO- http://localhost/healthz | grep -q ok"]
+    networks: [docmind]
+    deploy:
+      resources:
+        limits:
+          memory: 200m
+
+  # ------------------------------------------------------------------ 指标采集
+  prometheus:
+    image: prom/prometheus:v3.9.1
+    container_name: docmind-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROM_PORT:-9090}:9090"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [docmind]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  # ------------------------------------------------------------------ 可视化
+  grafana:
+    image: grafana/grafana:12.3.0
+    container_name: docmind-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?请在 .env 中设置 GRAFANA_PASSWORD}
+      GF_INSTALL_PLUGINS: ""
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+    networks: [docmind]
+    deploy:
+      resources:
+        limits:
+          memory: 700m
+
+networks:
+  docmind:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  kafka:
+  miniodata:
+  backend-data:
+  prometheus-data:
+  grafana-data:

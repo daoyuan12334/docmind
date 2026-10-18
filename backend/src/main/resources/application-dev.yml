@@ -1,0 +1,52 @@
+# ===== 本地开发 profile：零外部依赖（H2 + 内存向量 + 内存总线 + 本地磁盘）=====
+spring:
+  datasource:
+    url: jdbc:h2:file:./data/docmind;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+    hikari:
+      maximum-pool-size: 8
+  # dev 用 Spring 的 schema 初始化，直接复用同一份迁移脚本，避免两套 DDL 漂移
+  flyway:
+    enabled: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/migration/common/V1__core.sql
+      continue-on-error: false
+  data:
+    redis:
+      # dev 下不连接 Redis，由 LocalCacheAdapter 兜底
+      repositories:
+        enabled: false
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+      # dev 用内存向量库，避免与 pgvector 自动配置注册同名 bean
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+
+docmind:
+  storage:
+    type: local
+    local-root: ./data/storage
+  cache:
+    type: local
+  bus:
+    type: local
+  vector:
+    type: memory
+    file: ./data/vector-store.json
+
+logging:
+  level:
+    com.docmind: DEBUG
+
+# dev 环境没有 Redis / Kafka，关掉对应健康指示器，避免 /actuator/health 整体 DOWN
+# （docker-compose 的 healthcheck 依赖该端点）
+management:
+  health:
+    redis:
+      enabled: false

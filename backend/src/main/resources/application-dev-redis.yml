@@ -1,0 +1,38 @@
+# ===== 本地「半真实」profile：dev 的基础上只把缓存换成真 Redis =====
+#
+# 用法（配合 dev 一起激活，后面的 profile 覆盖前面的）：
+#   redis-server.exe --port 6379 &
+#   ./tool/dev.sh --profile dev-redis
+#   或：java -jar app.jar --spring.profiles.active=dev,dev-redis
+#
+# 目的：本机没有 Docker 也能验证限流计数器、会话窗口这些真正落在 Redis 上的行为，
+#       而不是只靠单测里的 mock。其余部分仍然是 dev 的零依赖配置。
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      repositories:
+        enabled: false
+  # 注意：这里整份覆盖 dev 的 exclude 列表（Spring Boot 的列表属性是「后者替换」而非合并），
+  # 所以要把仍然不需要的 Kafka / pgvector 重新列一遍。
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+
+docmind:
+  cache:
+    type: redis
+
+management:
+  health:
+    # 关掉 Spring Data Redis 自带的指示器：它靠解析 INFO 输出实现（Properties.load），
+    # 而 Windows 版 Redis 的 INFO 里含 `executable:c:\users\...` 这类反斜杠路径，
+    # 会被当成 Unicode 转义解析失败，连接正常却报 DOWN。
+    # 改用 observe.CacheHealthIndicator（走 CachePort.ping()，真发 PING），
+    # 在 dev / dev-redis / prod 下行为一致。
+    redis:
+      enabled: false
