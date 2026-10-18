@@ -70,10 +70,14 @@ public class ChunkRepository {
     }
 
     public List<Chunk> listByKb(long kbId, int limit, int offset) {
+        // 占位符顺序是 WHERE kb_id, 然后 LIMIT, 然后 OFFSET —— 传参必须同序。
+        // 之前写成 params(kbId, offset, limit)，把 limit / offset 传反了，
+        // 于是 limit=5000 / offset=0 的调用变成 "LIMIT 0 OFFSET 5000"，
+        // 永远返回空集，关键词通道静默失效（表现为所有结果 keywordScore=0）。
         return jdbc.sql("SELECT id, kb_id, doc_id, chunk_index, content, content_hash, token_count, page_no, "
                         + "content_type, meta, vector_id, created_at FROM kb_chunk WHERE kb_id = ? "
                         + "ORDER BY id LIMIT ? OFFSET ?")
-                .params(kbId, offset, limit).query(MAPPER).list();
+                .params(kbId, limit, offset).query(MAPPER).list();
     }
 
     public Map<Long, Chunk> mapByIds(List<Long> ids) {

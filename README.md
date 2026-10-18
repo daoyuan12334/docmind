@@ -239,7 +239,7 @@ docmind/
 | 上传 wav | `qwen3-omni-flash` 转写，英文语音 → 中文转写与原文一致 |
 | 上传 pdf（文本版） | 2 页 → 2 切片，走文本层，不触发 OCR |
 | 上传 pdf（扫描件） | 文本层为空 → 自动降级视觉 OCR，1 页 → 4 切片，识别文字与原文一致 |
-| 自动化测试 | `mvn test` → **77 个用例全绿** |
+| 自动化测试 | `mvn test` → **81 个用例全绿** |
 
 **真中间件验证（不再只靠 mock）：**
 
@@ -311,7 +311,13 @@ Kafka 4 个（跨进程投递、分区键、延迟、死信）。
 7. **扩展名判断不能用 `String.contains`**：`"mp3,wav,…,mp4a".contains("mp4")` 为真，
    这个 bug 曾把 `.mp4` 路由到音频解析器，把视频当 wav 送去 ASR。
    现在所有解析器都用精确的 `Set<String>`，`DocumentParserRoutingTest` 守着这条线。
-8. **Docker 未在本机安装**：compose 文件已交付但无法在此机器实测；功能验证全部走 dev profile 完成。
+8. **`LIMIT ? OFFSET ?` 的参数顺序**：`ChunkRepository.listByKb(kbId, limit, offset)`
+   曾把参数写成 `params(kbId, offset, limit)`，于是 `limit=5000 / offset=0`
+   到了 SQL 里变成 `LIMIT 0 OFFSET 5000` —— 永远返回空集。
+   后果是**关键词通道静默失效**：接口照样返回 200 和看似合理的分数，
+   只是每个结果的 `keywordScore` 恒为 0，混合检索退化成纯向量检索，
+   而没有任何报错。`HybridRetrievalTest` 专门守这条线。
+9. **Docker 未在本机安装**：compose 文件已交付但无法在此机器实测；功能验证全部走 dev profile 完成。
 
 ## 十三、一键冒烟
 
@@ -376,7 +382,7 @@ redis-server.exe --port 6379 &
 
 | job | 内容 |
 | --- | --- |
-| `backend` | `mvn test`（77 个用例）+ `package` + 上传 jar |
+| `backend` | `mvn test`（81 个用例）+ `package` + 上传 jar |
 | `frontend` | `npm ci` + `npm run build` + 上传 dist |
 | `compose` | `check_compose.py` 静态校验 + 校验器自检 + `docker compose config` |
 
