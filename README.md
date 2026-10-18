@@ -239,7 +239,7 @@ docmind/
 | 上传 wav | `qwen3-omni-flash` 转写，英文语音 → 中文转写与原文一致 |
 | 上传 pdf（文本版） | 2 页 → 2 切片，走文本层，不触发 OCR |
 | 上传 pdf（扫描件） | 文本层为空 → 自动降级视觉 OCR，1 页 → 4 切片，识别文字与原文一致 |
-| 自动化测试 | `mvn test` → **71 个用例全绿** |
+| 自动化测试 | `mvn test` → **77 个用例全绿** |
 
 **真中间件验证（不再只靠 mock）：**
 
@@ -263,6 +263,7 @@ cd backend && ../tool/mvn.sh test
 | `TextSplitterTest` | 切分不丢字、长度约束、空值安全、token 估算 | 5 |
 | `DocumentParserTest` | md / xlsx / pptx / pdf 真样本解析，旧 .ppt 被明确拒绝，扫描页空结果判定 | 7 |
 | `AuthAndKbApiTest` | 首个用户即 ADMIN、JWT 签发、伪造令牌 401、RBAC 403、上传幂等、traceId、health | 10 |
+| `OpenApiContractTest` | **接口文档契约**：文档端点匿名可达、OpenAPI 3.1、四个分组齐全、鉴权标注没跑偏 | 6 |
 | `KafkaMessageBusTest` | 分区键 = docId、topic 名、延迟投递、序列化 | 5 |
 | `CachePortContractTest` | 缓存端口契约：KV/TTL、计数器、List 窗口 | 5 |
 | `RedisCacheAdapterTest` | Lua 限流脚本、PEXPIRE 毫秒单位、窗口裁剪 | 9 |
@@ -375,7 +376,7 @@ redis-server.exe --port 6379 &
 
 | job | 内容 |
 | --- | --- |
-| `backend` | `mvn test`（71 个用例）+ `package` + 上传 jar |
+| `backend` | `mvn test`（77 个用例）+ `package` + 上传 jar |
 | `frontend` | `npm ci` + `npm run build` + 上传 dist |
 | `compose` | `check_compose.py` 静态校验 + 校验器自检 + `docker compose config` |
 
