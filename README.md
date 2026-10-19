@@ -1,9 +1,14 @@
 # DocMind · 企业级私有文档智能系统
 
+[![CI](https://github.com/daoyuan12334/docmind/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/daoyuan12334/docmind/actions/workflows/ci.yml)
+![tests](https://img.shields.io/badge/tests-85%20backend%20%2B%209%20frontend-brightgreen)
+
 > Spring Boot 4.1 + Spring AI 2.0 + RAG + MCP + Redis + Kafka + pgvector + 多模态大模型 + Micrometer + Docker Compose
 
 一套能**真正跑起来**的企业私有知识库：上传 PDF / Word / Excel / PPT / 图片 / 扫描件 / 音频 / 视频，
 自动解析、切片、向量化，提供带引用的流式问答，并通过 MCP 把知识库能力开放给外部 Agent。
+
+仓库：<https://github.com/daoyuan12334/docmind>
 
 ---
 
