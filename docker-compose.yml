@@ -214,7 +214,11 @@ services:
       AI_OMNI_MODEL: ${AI_OMNI_MODEL:-qwen3-omni-flash}
       JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-720}
-      DOCMIND_MCP_API_KEY: ${MCP_API_KEY:-}
+      # 注意：外层占位符必须与 .env 里的键名完全一致，否则 compose 会静默替换成空。
+      #（曾经外层用的是不带 DOCMIND_ 前缀的旧名，而 .env 里已是 DOCMIND_MCP_API_KEY，
+      #   两边对不上，等于密钥永远没生效 —— 现已统一成一个名字。）
+      # 另：tool/check_compose.py 是按文本扫占位符的，注释里不要写 ${...} 形式的示例。
+      DOCMIND_MCP_API_KEY: ${DOCMIND_MCP_API_KEY:-}
       DOCMIND_MCP_EXPOSE_KB_IDS: ${DOCMIND_MCP_EXPOSE_KB_IDS:-}
       JAVA_TOOL_OPTIONS: >-
         -XX:+UseContainerSupport

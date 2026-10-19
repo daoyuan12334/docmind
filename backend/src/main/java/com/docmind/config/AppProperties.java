@@ -95,12 +95,15 @@ public class AppProperties {
         private String type = "local";
     }
 
-    @Data
-    public static class Search {
-        /** pg：PostgreSQL 全文检索；memory：内存词频（无 PG 时）。 */
-        private String type = "memory";
-    }
-
+    /**
+     * 关键词检索实现的开关。
+     *
+     * <p>注意：这个配置**不走** {@code AppProperties} 绑定，
+     * 而是由 {@code InMemoryKeywordSearch} / {@code PgKeywordSearch} 上的
+     * {@code @ConditionalOnProperty(name = "docmind.search.type")} 直接读 Environment。
+     * 之前这里留了个没有对应字段的 {@code Search} 内部类，
+     * 会让人误以为配置绑到了这里 —— 已删除，避免误导。
+     */
     @Data
     public static class Bus {
         private String type = "local";

@@ -60,7 +60,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
-import http from '../api/http'
+import http, { actuator } from '../api/http'
 import * as echarts from 'echarts'
 
 const rows = ref([])
@@ -70,32 +70,37 @@ const chartEl = ref(null)
 let chart = null
 let timer = null
 
-const WATCHED = [
-  'docmind_ai_requests_total',
-  'docmind_ai_tokens_total',
-  'docmind_ai_duration_seconds_count',
-  'docmind_ingest_documents_total',
-  'docmind_ingest_duration_seconds_count',
-  'docmind_retrieval_duration_seconds_count',
-  'docmind_mcp_calls_total',
-  'docmind_ingest_queue',
-  'http_server_requests_seconds_count',
-  'jvm_memory_used_bytes',
-  'process_cpu_usage'
+// 注意：这里写的是 **Actuator 原生名（点分）**，不是 Prometheus 名字。
+// /actuator/metrics/<name> 只认原生名；Prometheus 端点里那种下划线形式
+// 是抓取时做名字转换后的产物。早期版本直接拿 `docmind_ai_requests_total`
+// 这类下划线名去请求这个端点，结果 12 个指标全部 404 —— 页面骨架正常渲染、
+// 但数据是空的，控制台一堆请求失败，不细看根本发现不了。
+//
+// 用「前缀过滤」而不是写死清单：以后新增业务指标（docmind.xxx）会自动出现，
+// 不用回来改代码。
+const INTEREST_PREFIX = [
+  'docmind.',
+  'http.server.requests',
+  'jvm.memory.used',
+  'jvm.threads.live',
+  'process.cpu.usage'
 ]
 
 async function load() {
   loading.value = true
   try {
-    // Actuator 单指标查询需要鉴权，这里用管理端聚合接口 + 直连 Prometheus 端点兜底
-    const names = await http.get('/actuator/metrics').then((d) => (d?.names || []).filter((n) => WATCHED.includes(n)))
-    const picked = names.length ? names : WATCHED
+    // 走 actuator 实例而不是 http：http 带 /api 前缀，会把请求打到
+    // /api/actuator/metrics（后端无此映射 → 500）。
+    const all = await actuator.get('/actuator/metrics').then((d) => d?.names || [])
+    const picked = all
+      .filter((n) => INTEREST_PREFIX.some((p) => n === p || n.startsWith(p)))
+      .sort()
     const out = []
-    for (const n of picked) {
+    for (const real of picked) {
       try {
-        const m = await http.get(`/actuator/metrics/${n}`)
+        const m = await actuator.get(`/actuator/metrics/${encodeURIComponent(real)}`)
         const total = (m?.measurements || []).reduce((a, b) => a + (b?.value ?? 0), 0)
-        out.push({ name: n, value: fmt(total, n) })
+        out.push({ name: real, value: fmt(total, real) })
       } catch {
         /* 单个指标不可用不影响整体 */
       }
@@ -107,38 +112,52 @@ async function load() {
   }
 }
 
+// 格式化依据的是 Actuator 原生名
 function fmt(v, name) {
-  if (name.endsWith('_bytes')) return (v / 1024 / 1024).toFixed(1) + ' MB'
-  if (name === 'process_cpu_usage') return (v * 100).toFixed(2) + ' %'
+  if (name.includes('memory')) return (v / 1024 / 1024).toFixed(1) + ' MB'
+  if (name.includes('cpu.usage')) return (v * 100).toFixed(2) + ' %'
   if (name.includes('duration')) return v.toFixed(2) + ' 次'
+  if (name.includes('queue') || name.includes('hits')) return v.toLocaleString()
   return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(2)
 }
 
 async function renderUsage() {
-  let list = []
+  let summary = null
   try {
-    list = await http.get('/admin/usage', { params: { hours: 24 } })
+    summary = await http.get('/admin/usage', { params: { hours: 24 } })
   } catch {
     return
   }
   await nextTick()
   if (!chartEl.value) return
   chart = chart || echarts.init(chartEl.value)
-  const buckets = Array.isArray(list) ? list : list?.items || []
+
+  // /admin/usage 返回的是近 24h 的**汇总对象**
+  //   { calls, promptTokens, completionTokens, avgLatencyMs }
+  // 不是按小时分桶的数组。早先这里按 buckets 数组去 `.map`，
+  // 拿到的是 {}，于是 `list?.items || []` 恒为空 → 图表永远一片空白。
+  const d = summary || {}
+  const bars = [
+    { label: 'Prompt tokens', value: d.promptTokens ?? 0 },
+    { label: 'Completion tokens', value: d.completionTokens ?? 0 },
+    { label: '调用次数', value: d.calls ?? 0 }
+  ]
   chart.setOption({
-    grid: { left: 48, right: 16, top: 24, bottom: 32 },
+    grid: { left: 64, right: 16, top: 24, bottom: 32 },
     tooltip: { trigger: 'axis' },
     xAxis: {
       type: 'category',
-      data: buckets.map((b) => b.bucket || b.hour || b.time || ''),
-      axisLabel: { rotate: 30, fontSize: 10 }
+      data: bars.map((b) => b.label),
+      axisLabel: { rotate: 20, fontSize: 10 }
     },
-    yAxis: { type: 'value', name: 'tokens', nameTextStyle: { fontSize: 10 } },
+    yAxis: { type: 'value', name: '近 24h', nameTextStyle: { fontSize: 10 } },
     series: [
       {
         type: 'bar',
-        data: buckets.map((b) => b.tokens ?? b.totalTokens ?? 0),
-        itemStyle: { color: '#409eff', borderRadius: [3, 3, 0, 0] }
+        data: bars.map((b) => b.value),
+        barWidth: '45%',
+        itemStyle: { color: '#409eff', borderRadius: [3, 3, 0, 0] },
+        label: { show: true, position: 'top', fontSize: 10 }
       }
     ]
   })

@@ -58,6 +58,11 @@ jobs:
         working-directory: ./frontend
         run: npm ci
 
+      # SSE 帧解析等纯函数回归（sse.test.js）：vitest 用 node 环境跑，无需浏览器
+      - name: Run unit tests
+        working-directory: ./frontend
+        run: npm test
+
       - name: Build
         working-directory: ./frontend
         run: npm run build

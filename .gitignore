@@ -17,6 +17,8 @@ data/
 package*.log
 run*.log
 build*.log
+# 前端走查脚本产出的截图：每次跑都会变，属运行产物，不入库
+tool/walkthrough-shots/
 
 # ---- IDE / 系统 ----
 .idea/

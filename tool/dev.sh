@@ -36,12 +36,21 @@ if [[ ! -f "$JAR" ]]; then
   exit 1
 fi
 
-# 从 .env 读取 API Key（若存在）
+# 从 .env 读取配置（若存在）。
+#
+# 关键：.env 只提供「默认值」，**不覆盖**命令行已经显式传入的环境变量。
+# 早先这里是直接 source 整个 .env，于是 .env 里那些留空的占位项
+#（例如 DOCMIND_MCP_EXPOSE_KB_IDS=）会把调用方传进来的真实值静默覆盖成空：
+# 不报错、不告警，但功能就是不通 —— 属于最难查的一类问题。
 if [[ -f "$ROOT/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source <(grep -E '^(DASHSCOPE_API_KEY|AI_|DOCMIND_|JWT_|FFMPEG_PATH)' "$ROOT/.env" || true)
-  set +a
+  while IFS= read -r line; do
+    key="${line%%=*}"
+    [[ -z "$key" ]] && continue
+    # 仅当外部没给值时才用 .env 兜底
+    if [[ -z "${!key:-}" ]]; then
+      export "$key=${line#*=}"
+    fi
+  done < <(grep -E '^(DASHSCOPE_API_KEY|AI_|DOCMIND_|JWT_|FFMPEG_PATH)' "$ROOT/.env" || true)
 fi
 
 # 视频抽帧依赖 ffmpeg。Windows 上若 PATH 里没有，可在 .env 里配 FFMPEG_PATH，

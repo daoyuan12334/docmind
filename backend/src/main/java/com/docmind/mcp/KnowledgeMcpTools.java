@@ -52,7 +52,11 @@ public class KnowledgeMcpTools {
     public String searchKnowledgeBase(
             @McpToolParam(description = "检索关键词或问题") String query,
             @McpToolParam(description = "知识库 ID，可通过 listKnowledgeBases 获取") long kbId,
-            @McpToolParam(description = "返回条数，默认 5") Integer topK) {
+            // required 必须显式写 false：@McpToolParam 的 required 默认是 true，
+            // 不写的话生成的 JSON Schema 会把 topK 列为必填，
+            // 于是客户端省略 topK 会直接被 schema 校验挡掉
+            //（报 "未找到所需属性 topK"），尽管下面这行本来就支持 null。
+            @McpToolParam(required = false, description = "返回条数，默认 5") Integer topK) {
         requireAllowed(kbId);
         int k = topK == null || topK <= 0 ? 5 : Math.min(topK, 20);
         List<RagModels.RetrievedChunk> chunks = ragService.retrieve(kbId, query, k);

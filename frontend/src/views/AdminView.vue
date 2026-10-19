@@ -62,7 +62,7 @@
             :closable="false"
             style="margin-top: 12px"
             title="生产建议"
-            description="把 JWT_SECRET、DB_PASSWORD、REDIS_PASSWORD、MINIO_SECRET_KEY 换成强随机值；MCP 端点必须配置 MCP_API_KEY 并显式列出可访问的知识库 ID。"
+            description="把 JWT_SECRET、DB_PASSWORD、REDIS_PASSWORD、MINIO_SECRET_KEY 换成强随机值；MCP 端点必须配置 DOCMIND_MCP_API_KEY 并显式列出可访问的知识库 ID。"
           />
         </el-card>
       </el-col>

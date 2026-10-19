@@ -143,6 +143,10 @@ async function send() {
 
   streaming.value = true
   streamText.value = ''
+  // meta 事件里的 sources 是这次回答的引用来源（后端在生成前就先推过来）。
+  // 必须在这里接住，onDone 时挂到消息上 —— 之前直接写 citations: []，
+  // 导致流式回答永远不显示"引用来源"，而非流式 /ask 却有，二者不一致。
+  let streamSources = []
   try {
     await streamChat(
       kbId.value,
@@ -153,6 +157,7 @@ async function send() {
             conversationId.value = meta.conversationId
             loadConversations()
           }
+          streamSources = ((meta && meta.sources) || []).map((s, i) => ({ ...s, index: i + 1 }))
         },
         onDelta: (token) => {
           streamText.value += token
@@ -160,10 +165,11 @@ async function send() {
         },
         onDone: () => {
           if (streamText.value) {
-            messages.value.push({ role: 'assistant', content: streamText.value, citations: [] })
+            messages.value.push({ role: 'assistant', content: streamText.value, citations: streamSources })
           }
           streaming.value = false
           streamText.value = ''
+          streamSources = []
         },
         onError: (msg) => {
           ElMessage.error('生成失败：' + msg)

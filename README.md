@@ -156,7 +156,19 @@ docker compose --env-file .env up -d --build
 | `get_document_summary` | 查看文档摘要与处理状态 |
 
 **安全边界**：只有在 `DOCMIND_MCP_EXPOSE_KB_IDS` 里列出的知识库 ID 才能被 MCP 访问（默认空 = 全部拒绝）；
-配置 `MCP_API_KEY` 后必须携带 `X-MCP-ApiKey` 请求头。
+配置密钥后必须携带 `X-MCP-ApiKey` 请求头。
+
+> **两个已踩过的坑（改这块时务必注意）：**
+>
+> 1. **环境变量名必须用 `DOCMIND_MCP_API_KEY`**，不是 `MCP_API_KEY`。
+>    它与 `application.yml` 里的 `docmind.mcp.api-key: ${DOCMIND_MCP_API_KEY:}` 严格对应；
+>    写成 `MCP_API_KEY` 不会报错，只是永远读不到（静默失效），表现为"配了密钥却没鉴权"。
+> 2. **`@McpToolParam` 的 `required` 默认是 `true`**。
+>    想让参数可选就必须显式写 `@McpToolParam(required = false, ...)`。
+>    曾经 `search_knowledge_base` 的 `topK` 就漏了这一项：代码里明明写了
+>    `topK == null ? 5 : topK`（支持省略），但生成的 JSON Schema 把它标成必填，
+>    于是客户端省略 `topK` 会直接被 schema 校验拒掉
+>    （报 `未找到所需属性"topK"`）—— **契约与实现对不上，且不抛任何业务异常。**
 
 Cursor / Claude Desktop 配置示例：
 
@@ -231,7 +243,10 @@ docmind/
 | 混合检索 | 返回相关度 0.448 / 0.334 / 0.319 |
 | 同步问答 | 带 `[1]` 引用、prompt/completion token、latency 统计 |
 | SSE 流式 | `event:meta` → `event:delta`(逐 token) → `event:done` |
-| MCP 握手 | `initialize` → `tools/list` → `tools/call` 全通 |
+| MCP 握手 | `initialize` → `tools/list` → `tools/call` 全通（MCP 2025-06-18 / Streamable HTTP） |
+| MCP 鉴权 | 不带 `X-MCP-ApiKey` → `401`；带正确密钥 → 正常建 session |
+| MCP 工具调用 | `list_knowledge_bases` 返回 `id=1 \| 名称=redis-verify \| 文档数=1 \| 切片数=3` 等；`search_knowledge_base` 返回带相关度的原文片段 |
+| MCP 白名单 | 未列入 `DOCMIND_MCP_EXPOSE_KB_IDS` 的库（如 999）调用被拒：`知识库 999 未授权给 MCP 访问` |
 | 上传 xlsx | 2 个 sheet → 4 切片，摘要准确提取数值 |
 | 上传 pptx | 2 页 → 2 切片，标题与正文均抽出 |
 | 重复上传同一文件 | 第二次 `duplicate=true`，不再重复跑流水线 |
@@ -239,7 +254,7 @@ docmind/
 | 上传 wav | `qwen3-omni-flash` 转写，英文语音 → 中文转写与原文一致 |
 | 上传 pdf（文本版） | 2 页 → 2 切片，走文本层，不触发 OCR |
 | 上传 pdf（扫描件） | 文本层为空 → 自动降级视觉 OCR，1 页 → 4 切片，识别文字与原文一致 |
-| 自动化测试 | `mvn test` → **81 个用例全绿** |
+| 自动化测试 | `mvn test` → **85 个用例全绿**；前端 `npm test`（vitest）→ **9 个用例全绿** |
 
 **真中间件验证（不再只靠 mock）：**
 
@@ -269,8 +284,24 @@ cd backend && ../tool/mvn.sh test
 | `RedisCacheAdapterTest` | Lua 限流脚本、PEXPIRE 毫秒单位、窗口裁剪 | 9 |
 | `DocumentParserRoutingTest` | **扩展名路由回归**：`.mp4` 必须走视频而非音频，空/未知扩展名必须被拒 | 18 |
 | `MultimodalPayloadTest` | 多模态请求体必须是 data URI（见下方注意事项第 7 条） | 4 |
+| `HybridRetrievalTest` | **关键词通道回归**：分页参数不能写反，中文查询必须能召回 | 4 |
+| `McpToolContractTest` | **MCP 工具契约**：生成的 Schema 的 required 必须与方法实现对得上（见注意事项第 10 条） | 4 |
 
 测试跑在 `test` profile：内存 H2 + 本地适配器 + 假密钥，**不连任何中间件、不消耗任何 token**。
+
+### 前端测试（vitest）
+
+```bash
+cd frontend && npm test
+```
+
+| 测试文件 | 覆盖 | 用例数 |
+| --- | --- | --- |
+| `src/api/sse.test.js` | **SSE 帧解析回归**：无空格/带空格帧都要认（Spring 输出 `event:meta` 无空格，正则写死带空格会把每帧静默丢弃）、多行 `data:` 用 `\n` 拼回、CRLF 行尾、半帧缓冲语义 | 9 |
+
+这条测试守的是 2026-10-19 真浏览器走查抓到的实 bug：流式问答一个字都不显示、
+控制台零报错，根因是 `http.js` 手写 SSE 解析器的正则不认无空格帧。
+解析逻辑已抽到零依赖的 `src/api/sse.js`，`streamChat` 只负责读流与分发。
 
 另有两组**真中间件联调**用例。它们命名成 `*IT`，而 surefire 默认只收 `*Test`，
 所以不会污染日常构建，需要显式执行：
@@ -317,7 +348,15 @@ Kafka 4 个（跨进程投递、分区键、延迟、死信）。
    后果是**关键词通道静默失效**：接口照样返回 200 和看似合理的分数，
    只是每个结果的 `keywordScore` 恒为 0，混合检索退化成纯向量检索，
    而没有任何报错。`HybridRetrievalTest` 专门守这条线。
-9. **Docker 未在本机安装**：compose 文件已交付但无法在此机器实测；功能验证全部走 dev profile 完成。
+9. **`.env` 会覆盖命令行环境变量**：`tool/dev.sh` 早期版本直接 `source .env`，
+   于是 `.env` 里那些**留空的占位项**（如 `DOCMIND_MCP_EXPOSE_KB_IDS=`）
+   会把调用方显式传入的值静默覆盖成空 —— 不报错、不告警，但功能就是不通。
+   现已改成「`.env` 只提供默认值，不覆盖外部已设置的变量」。
+   **推论**：任何"读取 .env 再启动"的脚本都要注意这个方向，否则命令行传参会失效。
+10. **`@McpToolParam.required` 默认是 `true`**：可选参数必须显式写 `required = false`。
+    契约（生成的 JSON Schema）和实现对不上时，失败发生在框架校验层，
+    业务日志里什么都不会有 —— 排查时容易一直在错误的层面上找原因。
+11. **Docker 未在本机安装**：compose 文件已交付但无法在此机器实测；功能验证全部走 dev profile 完成。
 
 ## 十三、一键冒烟
 
@@ -382,8 +421,8 @@ redis-server.exe --port 6379 &
 
 | job | 内容 |
 | --- | --- |
-| `backend` | `mvn test`（81 个用例）+ `package` + 上传 jar |
-| `frontend` | `npm ci` + `npm run build` + 上传 dist |
+| `backend` | `mvn test`（85 个用例）+ `package` + 上传 jar |
+| `frontend` | `npm ci` + `npm test`（vitest 9 个用例）+ `npm run build` + 上传 dist |
 | `compose` | `check_compose.py` 静态校验 + 校验器自检 + `docker compose config` |
 
 需要真中间件的两个 `*IT` 不在 CI 里跑（日常构建不该依赖 Redis/Kafka），
