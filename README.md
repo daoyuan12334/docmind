@@ -259,7 +259,29 @@ docmind/
 | 上传 wav | `qwen3-omni-flash` 转写，英文语音 → 中文转写与原文一致 |
 | 上传 pdf（文本版） | 2 页 → 2 切片，走文本层，不触发 OCR |
 | 上传 pdf（扫描件） | 文本层为空 → 自动降级视觉 OCR，1 页 → 4 切片，识别文字与原文一致 |
-| 自动化测试 | `mvn test` → **85 个用例全绿**；前端 `npm test`（vitest）→ **9 个用例全绿** |
+| 自动化测试 | `mvn test` → **90 个用例全绿**；前端 `npm test`（vitest）→ **9 个用例全绿** |
+| 演示数据灌入 | `python tool/seed_demo.py` → 4 个主题库、24 篇文档、182 个切片，全部 INDEXED |
+| 跨库问答抽检 | 制度/产品/研发三个库各问一题，答案与引用全部命中对应文档 |
+
+### 演示数据：一键灌入
+
+`samples/demo/` 下有 15 篇有实质内容的 Markdown（不是 lorem ipsum），
+`tool/seed_demo.py` 会把它们连同 `samples/` 下的多模态素材按主题归到 4 个库：
+
+| 知识库 | 内容 | 文档 | 切片 |
+| --- | --- | --- | --- |
+| 企业制度中心 | 差旅报销、员工手册、考勤假期、信息安全 | 6 | 24 |
+| 产品与客服 | 产品手册、FAQ、客服规范、版本记录、客户案例、SLA | 6 | 31 |
+| 技术研发 | 架构说明、部署运维、API 规范、数据库设计、故障复盘、编码规范 | 7 | 56 |
+| 多模态素材库 | 图片、扫描件 PDF、音频、视频、表格 | 5 | 71 |
+
+```bash
+python tool/seed_demo.py          # 幂等：按内容 checksum 比对，没变的文档不会重复向量化
+DOCMIND_SEED_REPLACE=0 python tool/seed_demo.py   # 只补缺失的，不替换已改动的
+```
+
+脚本零依赖（手写 multipart），会用 `admin/admin123` 登录并等到所有文档进入终态才退出。
+**注意**：文档向量化要调模型接口，会产生少量费用。
 
 **真中间件验证（不再只靠 mock）：**
 
@@ -282,6 +304,7 @@ cd backend && ../tool/mvn.sh test
 | --- | --- | --- |
 | `TextSplitterTest` | 切分不丢字、长度约束、空值安全、token 估算 | 5 |
 | `DocumentParserTest` | md / xlsx / pptx / pdf 真样本解析，旧 .ppt 被明确拒绝，扫描页空结果判定 | 7 |
+| `MarkdownHeadingContextTest` | **Markdown 标题上下文**：接口路径/章节名必须进正文、标题作为前缀、换标题要开新块、不许出几个字的碎片切片 | 5 |
 | `AuthAndKbApiTest` | 首个用户即 ADMIN、JWT 签发、伪造令牌 401、RBAC 403、上传幂等、traceId、health | 10 |
 | `OpenApiContractTest` | **接口文档契约**：文档端点匿名可达、OpenAPI 3.1、四个分组齐全、鉴权标注没跑偏 | 6 |
 | `KafkaMessageBusTest` | 分区键 = docId、topic 名、延迟投递、序列化 | 5 |
@@ -307,6 +330,10 @@ cd frontend && npm test
 这条测试守的是 2026-10-19 真浏览器走查抓到的实 bug：流式问答一个字都不显示、
 控制台零报错，根因是 `http.js` 手写 SSE 解析器的正则不认无空格帧。
 解析逻辑已抽到零依赖的 `src/api/sse.js`，`streamChat` 只负责读流与分发。
+
+`MarkdownHeadingContextTest` 守的是同一天灌演示数据时抓到的另一个实 bug，详见
+下方注意事项第 12 条：**Markdown 标题曾整个不进索引**，问「非流式问答接口是哪个路径」
+只会得到「知识库中未找到相关内容」。
 
 另有两组**真中间件联调**用例。它们命名成 `*IT`，而 surefire 默认只收 `*Test`，
 所以不会污染日常构建，需要显式执行：
@@ -362,6 +389,18 @@ Kafka 4 个（跨进程投递、分区键、延迟、死信）。
     契约（生成的 JSON Schema）和实现对不上时，失败发生在框架校验层，
     业务日志里什么都不会有 —— 排查时容易一直在错误的层面上找原因。
 11. **Docker 未在本机安装**：compose 文件已交付但无法在此机器实测；功能验证全部走 dev profile 完成。
+12. **Markdown 标题曾经整个不进索引**（2026-10-19 修复）：
+    最初用 Spring AI 的 `MarkdownDocumentReader` 读 `.md`，实测它有两个致命行为——
+    标题只进 metadata 的 `title`、`getText()` 里没有，**标题后紧跟代码块时连 `title` 都拿不到**
+    （如 `### POST /api/chat/{kbId}/ask` 后面直接是 ```json 块）；
+    另外代码块、单行表格各自成块，产出大量 3 个字、8 个字的碎片切片。
+    后果：问「非流式问答接口是哪个路径」永远答「知识库中未找到相关内容」——
+    因为答案就在标题里，而标题没进库。
+    现在 `TextDocumentParser` 改为**直接按行扫原始文本**：遇到 `#` 标题就切块并把标题作为前缀拼回正文，
+    同一标题下的内容攒够 600 字再输出，不足 150 字的章节向前合并。
+    修复前后对比：同一份 API 文档 36 块（19 块短于 60 字）→ 21 块且无碎片。
+    `MarkdownHeadingContextTest` 守这条线（回退验证过：去掉标题前缀后 3 个用例立刻变红）。
+    **推论**：解析器的"结构化"不等于"更适合检索"，用之前一定要打印真实分块结果看一眼。
 
 ## 十三、一键冒烟
 
