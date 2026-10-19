@@ -29,6 +29,12 @@ SAMPLES = os.path.join(ROOT, "samples")
 # 设为 0 则只补缺失的文档，已有的不动。
 REPLACE = os.environ.get("DOCMIND_SEED_REPLACE", "1") not in ("0", "false", "no")
 
+# 强制重灌：忽略 checksum 比对，全部删旧传新。
+# 解析器/切分策略改过之后必须用它 —— 文档内容没变，但索引是旧逻辑产出的，
+# 不重建就永远看不到修复效果（这一点踩过：改完标题解析，问答依旧答错，
+# 因为库里还是老切片）。
+FORCE = os.environ.get("DOCMIND_SEED_FORCE", "0") not in ("0", "false", "no")
+
 
 def request(method, path, token=None, body=None, headers=None):
     url = BASE + path
@@ -138,14 +144,15 @@ def seed(token, title, desc, files):
         cur = existing.get(name)
         if cur:
             # 用 checksum 精确比对：内容没变就别重灌，向量化是要花钱的
-            if cur.get("checksum") and cur["checksum"] == sha256_of(p):
+            if not FORCE and cur.get("checksum") and cur["checksum"] == sha256_of(p):
                 print("    %-26s 已是最新，跳过" % name)
                 continue
-            if not REPLACE:
+            if not (REPLACE or FORCE):
                 print("    %-26s 已存在且内容不同（未开启替换，跳过）" % name)
                 continue
             st, _ = request("DELETE", "/api/kb/documents/%d" % cur["id"], token=token)
-            print("    %-26s 内容已变更，删除旧版 HTTP %s" % (name, st))
+            print("    %-26s %s，删除旧版 HTTP %s"
+                  % (name, "强制重灌" if FORCE else "内容已变更", st))
         upload(token, kbid, p)
 
 
