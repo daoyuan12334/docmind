@@ -43,3 +43,29 @@ body {
   background: #f5f7fa; padding: 10px; border-radius: 6px; overflow-x: auto;
 }
 .answer-body code { background: #f5f7fa; padding: 2px 4px; border-radius: 4px; }
+
+/* ---------------------------------------------------------------------------
+   响应式与可点击区（2026-10-19 实测后补）
+   审计脚本 .audit/layout-audit.cjs 实测出的问题：
+     1. 移动端 7/7 页面横向溢出（侧边栏固定 220px 撑破，已在 MainLayout 改抽屉）
+     2. 表格在窄屏撑破容器
+     3. link / small 按钮实测只有 34x20，小于可点击区建议值
+   --------------------------------------------------------------------------- */
+
+/* 表格：列多时让容器自己横向滚动，而不是把页面顶宽。
+   el-table 的 wrapper 本身就是滚动容器，这里补上外层 card 的兜底。 */
+.card { overflow-x: auto; }
+@media (max-width: 992px) {
+  .el-table { min-width: 100%; }
+}
+
+/* 统一加大可点击区：Element Plus 的 link / small 按钮默认只有 34x20 */
+.el-button.is-link { padding: 6px 8px; min-height: 32px; }
+.el-button--small.is-link,
+.el-button.el-button--small.is-text { min-height: 28px; padding: 5px 8px; }
+
+/* 窄屏：表单 label 改为居上，避免 label + 控件横向放不下（实测 504 > 390） */
+@media (max-width: 992px) {
+  .el-form-item__label { float: none !important; display: block !important; text-align: left !important; padding-bottom: 4px !important; }
+  .el-form-item__content { margin-left: 0 !important; }
+}
